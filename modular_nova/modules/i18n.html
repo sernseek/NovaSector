@@ -1,0 +1,193 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><base href="../../"><link rel="stylesheet" href="dmdoc.css"><title>modular_nova/modules/i18n/readme.md - /tg/ Station 13</title></head><body><header><a href="index.html">/tg/ Station 13</a> - <a href="index.html#modules">Modules</a> - <a href="index.html#types">Types</a></header><main><h1>modular_nova/modules/i18n/readme.md <a href="https://github.com/sernseek/NovaSector/blob/e244656713d063185c8a02d33e48c72579ae163d/modular_nova/modules/i18n/readme.md"><img src="git.png" width="16" height="16" title="modular_nova/modules/i18n/readme.md"></a></h1><table class="summary" cellspacing="0"><tr><td colspan="2"><h2 id="novasector-全量汉化-i18n">NovaSector 全量汉化 (i18n)</h2>
+<p>Module ID: I18N</p>
+<h3 id="description">Description:</h3>
+<p>为 NovaSector 提供全量本地化（首发简体中文 zh-Hans）的运行时基础设施。架构分四层：</p>
+<ol>
+<li><strong>编译期（Rust）</strong> <code>tools/i18n/</code>：基于 SpacemanDMM 的 <code>dreammaker</code> 解析器，把玩家可见
+字符串抽取为带位置占位符（<code>{0}</code>/<code>{1}</code>…）的英文模板，改写调用点为 <code>LANG/LANGU(...)</code>，
+产出主英文目录 <code>strings/i18n/en/*.json</code>。</li>
+<li><strong>运行时（DM + rust_g）</strong> 本模块 <code>code/</code>：
+<ul>
+<li><code>runtime.dm</code>：<code>lang_format</code> / <code>lang_format_for</code> 查表与占位符填充，惰性加载并缓存整个
+locale；复用 <code>code/__HELPERS/_string_lists.dm</code> 的 json/file2text 思路。</li>
+<li><code>fallback.dm</code>：基于 <code>rustg_acreplace</code>（Aho-Corasick）的英→中兜底，接住未抽取/无法
+静态抽取的残留英文。</li>
+</ul>
+</li>
+<li><strong>TGUI（TypeScript）</strong>：<code>packages/tgui</code> 的 JSX 静态文本与常见文本 props 自动查前端目录；
+源翻译放在 <code>strings/i18n/&lt;locale&gt;/tgui.json</code>，构建前同步到 TGUI 包内；动态内容由 DM 端预本地化后经 props 传来。</li>
+<li><strong>翻译</strong>：Codex 机翻预填（<code>tools/i18n/mt/</code>）为主；人工校对走<strong>自选的在线本地化平台</strong>（译文是 <code>strings/i18n/</code> 下的扁平 JSON，Crowdin / Lokalise / Weblate / Tolgee Cloud 等都能导入导出。已移除自托管 Tolgee）。</li>
+</ol>
+<p>locale 解析：</p>
+<ul>
+<li><code>LANG(key, args)</code> —— 全服 locale（<code>GLOB.i18n_server_locale</code>），用于广播类文本
+（<code>visible_message</code> 等：一条字符串展示给多名观察者，无法按单人区分）。</li>
+<li><code>LANGU(user, key, args)</code> —— 兼容旧调用的入口；当前部署模式同样使用全服 locale。</li>
+<li>TGUI 的 <code>config.locale</code> 也由 <code>GLOB.i18n_server_locale</code> 注入。</li>
+</ul>
+<p>目录文件位于 <code>strings/i18n/&lt;locale&gt;/&lt;namespace&gt;.json</code>（<code>strings/</code> 已被 git 跟踪；不可用
+<code>data/</code>，其被 .gitignore 忽略）。TGUI 使用同一目录下的 <code>tgui.json</code> 命名空间作为源。</p>
+<h3 id="文件地图-i18n-文件散落多处-多为运行时-打包器按固定路径加载-不可随意挪动">文件地图（i18n 文件散落多处，多为运行时/打包器按固定路径加载，不可随意挪动）:</h3>
+<p><strong>运行时/打包器按固定路径加载——钉死，勿移动：</strong></p>
+<ul>
+<li><code>strings/i18n/&lt;locale&gt;/*.json</code> —— 游戏端译文目录。DM 运行时从 <code>STRING_DIRECTORY(&quot;strings&quot;)/i18n/</code> 加载（见 <code>code/__DEFINES/text.dm</code> + <code>~nova_defines/i18n.dm</code>）。</li>
+<li><code>tgui/packages/tgui/i18n/</code> —— TGUI 前端运行时：<code>catalog.ts</code>/<code>localize.ts</code>/<code>jsx-runtime.ts</code>/<code>jsx-dev-runtime.ts</code> + 打包子集 <code>&lt;locale&gt;.json</code>。打包器靠 <code>tgui/i18n</code> 别名 + SWC <code>importSource</code> 解析，必须在 tgui 包内。</li>
+<li><code>code/__DEFINES/~nova_defines/i18n.dm</code> —— <code>LANG</code>/<code>LANGU</code> 宏与 locale 常量（fork 规定 defines 进 <code>~nova_defines</code>）。</li>
+<li><code>modular_nova/master_files/code/...</code> —— core override（必须镜像 core 路径）：<code>game/atoms.dm</code>（name/desc 反查）、<code>controllers/configuration/entries/config_entries.dm</code>（<code>I18N_SERVER_LOCALE</code> + <code>I18N_CHAT_FALLBACK</code>）、<code>_onclick/hud/screen_objects/new_player.dm</code>（默认 HUD 大厅按钮全服中文换中文重绘 .dmi）。core NOVA EDIT：<code>code/modules/tgui/tgui.dm</code>（注入 <code>config.locale</code>）。</li>
+<li><code>modular_nova/modules/i18n/icons/lobby/*.dmi</code> —— 默认 HUD 大厅按钮中文重绘精灵（join/observe/ready/character_setup）；由 <code>tools/i18n/lobby-buttons/</code> 用 Fusion Pixel 字体逐帧生成。</li>
+<li><code>modular_nova/modules/title_screen/code/title_screen_html.dm</code> —— <code>lang_localize_title_html</code>：title_screen 模块 HTML 菜单（raw browse 绕过 AC 钩子）的菜单文案专项本地化。</li>
+<li><code>config/game_options.txt</code>（<code>I18N_SERVER_LOCALE</code>）—— 配置，位置固定。（<strong>无 CI workflow</strong>：原 <code>.github/workflows/i18n.yml</code> 已删，lint/重同步改本地手动跑。）</li>
+</ul>
+<p><strong>本模块（DM 运行时实现）：</strong></p>
+<ul>
+<li><code>modular_nova/modules/i18n/code/{runtime,fallback}.dm</code> —— 查表 / 占位符格式化 / name-desc 反查表 + AC 兜底。</li>
+<li><code>modular_nova/modules/i18n/code/fonts.dm</code> + <code>modular_nova/modules/i18n/fonts/fusion_pixel_8px_zh_hans.ttf</code>（OFL-1.1，<code>OFL.txt</code>）—— <strong>maptext 中文像素字体</strong>：核心 maptext 字体（Grand9K Pixel 等）只含拉丁字形，汉字回退到系统字体微缩 → 模糊。<code>/datum/font/fusion_pixel_8px</code> 注册该 .ttf（产生资源引用使 BYOND 打包发给客户端），<code>interface/skin.dmf</code> 的 <code>.maptext</code>/<code>.context</code>/<code>.subcontext</code>/<code>.small</code>/<code>.italics</code> 字体族<strong>追加它为回退</strong>——BYOND 按字形回退：拉丁字仍走原像素字体、汉字落到它（8px=6pt 锐利，整数倍 12/18pt 仍锐利）。无需 locale 门控（英文服永不请求汉字字形=零视觉变化，仅多打包 3.4MB）。</li>
+<li><code>modular_nova/modules/i18n/code/template_match.dm</code> —— <strong>边界模板逆匹配引擎</strong>：目录里已翻译的插值模板（<code>{0}</code> 句式）在输出边界整句命中（AC 锚检测 → 逐字面段验证 → 捕获实参反查 → 按 zh 模板重排填充），挂在 <code>lang_fallback_apply</code> 内、字面 AC 之前；聊天/browse/状态栏/公告/maptext 全部边界共享。运行期拼接/插值的英文句子（②③类长尾）由此系统性覆盖，无需逐点改写。回归测试：<code>code/modules/unit_tests/~nova/i18n_template.dm</code>。</li>
+</ul>
+<p><strong>构建 / 翻译工具——都在 <code>tools/i18n/</code>（<strong>未移动</strong>：移动需改 ~71 处构建/CI/脚本引用，风险高）：</strong></p>
+<ul>
+<li><code>tools/i18n/src/*.rs</code> —— Rust 抽取（<code>extract</code>，含通用 proc-return 句子 + 安全 verb 名）/ 改写（<code>rewrite</code>）/ verb 编译期注入（<code>verbs</code>）/ 门禁（<code>lint</code>）/ 伪 locale（<code>pseudo</code>），基于 SpacemanDMM 的 dreammaker。</li>
+<li><code>tools/i18n/src/lint.rs</code> + <code>tools/i18n/identifier-baseline.txt</code> —— <strong>编译期门禁</strong>：目录卫生（占位符 parity / 控制字符）+ 标识符碰撞静态分析（<code>==</code>/<code>switch</code>/下标 ∩ en 目录可翻译值，基线增量，新增高置信即报错）。<strong>本地手动跑</strong>（无 CI workflow）。详见 <code>tools/i18n/README.md</code>「门禁与回归检测」。</li>
+<li><code>tools/i18n/src/pseudo.rs</code> + <code>tools/i18n/pseudo-scan.mjs</code> —— <strong>伪 locale</strong>：<code>pseudo</code> 从 en/ 生成 <code>qps-ploc</code>（值包 <code>⟦原文⟧</code>，不入库），<code>I18N_SERVER_LOCALE qps-ploc</code> 跑一圈后用 <code>pseudo-scan.mjs</code> 找 ⟦⟧ 外残留英文 = 未接通翻译通道的路径。</li>
+<li><code>code/modules/unit_tests/~nova/i18n_unreverse.dm</code> —— <code>lang_reverse_text ↔ lang_unreverse_text</code> 往返不变量测试（守护 chem dispenser 等「UI 回传译名查英文键表」解药）。</li>
+<li><code>tools/i18n/lobby-buttons/</code> —— 默认 HUD 大厅按钮中文重绘脚本（<code>gen_dmi.py</code>）+ 字体/重生成说明。</li>
+<li><code>tools/i18n/tgui-catalog.mjs</code> —— TGUI 静态文本抽取 + 同步前端子集（<code>tgui:build</code> 会自动 <code>sync</code>）。合并两层 DM 显示标签：AST（下方 dm_labels.json）+ 残留正则 <code>DM_LABEL_SOURCES</code>。</li>
+<li><code>tools/i18n/src/labels.rs</code> + <code>tools/i18n/dm_labels.json</code> —— <strong>AST 显示标签抽取</strong>（<code>nova-i18n labels</code>）：按类型路径/proc 语义抽 name/title/category_name/explanation/<code>init_possible_values()</code> 选项/全局 list，产物 JSON 由 tgui-catalog 合并进前端目录。<code>init_possible_values</code> 经预处理器展开 → 自动覆盖所有 choiced 下拉（含 #define 选项），新增下拉无需再加规则。<code>resync.sh</code> 刷新。</li>
+<li><code>tools/i18n/resync.sh</code> —— 合并上游后一键重同步（extract + rewrite + tgui 同步）。</li>
+<li><code>tools/i18n/mt/</code> —— 机翻（<code>i18n-mt.ts</code>，后端 codex/claude/openai）+ 术语表 <code>glossary.zh-Hans.json</code> + 候选发现 <code>glossary-sync.ts suggest</code>。</li>
+<li><code>tools/i18n/README.md</code> —— 命令速查。</li>
+</ul>
+<p><strong>人工校对平台：</strong> 自选<strong>在线</strong>本地化平台（导入导出 <code>strings/i18n/&lt;locale&gt;/*.json</code>；Crowdin / Lokalise / Weblate / Tolgee Cloud 等）。自托管 Tolgee 已移除。</p>
+<h3 id="tg-proc-file-changes">TG Proc/File Changes:</h3>
+<ul>
+<li>
+<p><strong>身体部位名 / 代词 / 自我体检（<code>runtime.dm</code> 加 <code>lang_zone</code>/<code>lang_pronoun</code> <strong>专用映射</strong>，零全局碰撞）</strong>：</p>
+<ul>
+<li><strong>部位名</strong>（chest/head…）：<code>lang_zone(text)</code> 硬编码 zh 专用表——避开「chest=胸部 vs 储物箱」单词全局碰撞（只在部位语境调用）。<code>parse_zone</code>（mobs.dm，改 <code>. =</code> 后 <code>return lang_zone(.)</code>）+ <code>check_for_injuries</code>/embed 的 <code>plaintext_zone</code>（_bodyparts.dm）显示处包裹。</li>
+<li><strong>代词</strong>（He/is/him…）：<code>lang_pronoun(word)</code> 硬编码 zh 专用表（he→他、is→是、himself→他自己；does/do/s/es 等语法后缀保持英文）——不走全局反查（it/is/his 是常见短词会误伤动态数据）。在高价值模板实参处包裹：atom examine 描述符（<code>p_They()</code>/<code>p_are()</code>，atom_examine.dm）、自我检查（<code>p_them()</code>，human_defense.dm）。<strong>模板译文里占位符就位即成中文</strong>（如 atom.0e340ddb 译为「这是一个{2}…」）。</li>
+<li><strong>自我体检累加器</strong>：<code>is_examine_accumulator</code> 增 <code>combined_msg</code>/<code>check_list</code>（extract.rs）→ 「You check yourself for injuries.」「Your {0} looks {1}.」等进 LANG（重写 14 处/4 文件）。残留：状态词 OK/no damage 与 has/looks 连接词是实参短词、仍英文（伤情词表是更深一层 vocab）。</li>
+</ul>
+</li>
+<li>
+<p><strong>方法调用形式的汇聚点接入（重大覆盖修复，<code>tools/i18n/src/extract.rs</code> + <code>rewrite.rs</code>）</strong>：此前抽取/改写只检测<strong>裸调用</strong> <code>Term::Call</code>（<code>visible_message(...)</code>、隐式 src），<strong>完全漏掉方法调用</strong> <code>X.visible_message(...)</code>/<code>src.say(...)</code>/<code>M.balloon_alert(...)</code>（AST 里是 <code>Follow::Call</code>，在 follow 链上）——而战斗/交互的可见消息绝大多数是这种形式。修复：两个 <code>recurse_follow</code> 对 <code>Follow::Call(_, name, args)</code> 也查 <code>sink_message_args(name)</code>；rewrite 用 follow 自身的 <code>Spanned</code> Location 定位，并让 <code>find_open_paren</code> 跳过方法调用的前导属性访问标点（<code>.</code>/<code>:</code>/<code>?.</code>）。一次重抽 <strong>+6375 条</strong>、重写 <strong>7560 处 / 1504 文件</strong>（如 <code>user.visible_message(span_danger(&quot;[user] fires [src]!&quot;))</code> → <code>LANG</code>）。DM 全量编译 0 errors、tg/nova grep 通过。</p>
+</li>
+<li>
+<p><code>code/modules/tgui/tgui.dm</code>: <code>/datum/tgui/proc/get_payload</code> —— ① 在 config 负载注入 <code>&quot;locale&quot;</code>（供 TGUI 读 <code>config.locale</code>）；② 全服 locale≠en 时对 <code>ui_data</code>/<code>ui_static_data</code> 跑 <code>lang_reverse_tree</code>，把负载里<strong>含空白的多词字符串</strong>反查为译文（接入非 atom datum 的 name/desc/说明等动态内容）。均 NOVA EDIT ADDITION。</p>
+</li>
+<li>
+<p><strong>标识符耦合显示名走 TS 端 + P1 跳过（避免破坏 act，零上游 .tsx 改动）</strong>：职业/怪癖/食物类别/精灵配件的 <code>name</code>/<code>title</code> 在 TGUI 里既是显示又是 <code>act()</code> 标识符——P1 改 ui_data 值会破坏操作（多词名翻了 act 就坏）。机制：① <code>tgui-catalog.mjs</code> 的 <code>DM_LABEL_SOURCES</code> 把这些 DM 名读进 <code>tgui.json</code> 前端目录——已接 food 全局列表、<code>code/__DEFINES/jobs.dm</code> 的 <code>#define JOB_X &quot;…&quot;</code>（职业/部门）、<code>code/datums/quirks</code> 的 <code>name</code>、<code>code/datums/sprite_accessories.dm</code>（发型/渐变/纹身…）、<code>code/modules/language</code>（语言名）、<code>code/modules/loadout/categories</code>（配装物品名，偏好按 item_path 存=安全）、species_types（物种名）；TS 端 auto-localize 只翻<strong>显示</strong>（act/dropdown value 用原英文值，安全；<code>FeatureDropdownInput</code> 用 <code>{displayText, value}</code> 选项，<code>localizeOption</code> 只翻 displayText、value 不动；TS 端无多词门槛，单词类如 Meat/Cursed 也翻）。<strong>加新面只需在 <code>DM_LABEL_SOURCES</code> 加一行</strong>。<strong><code>addText</code> 全局剥 <code>\improper</code>/<code>\proper</code> 宏</strong>：物种名 <code>name = &quot;\improper Human&quot;</code> 抽出为 <code>Human</code>，与运行时 TGUI 收到的（宏已解析）对齐。② <code>runtime.dm</code> 的 <code>GLOB.i18n_tgui_strings</code>（en/tgui.json 的 key 集，启动加载）+ <code>lang_reverse_phrase_tgui</code> 让 <code>lang_reverse_tree</code>（P1）<strong>跳过出现在 tgui 目录里的串</strong>，不改数据=保住标识符。descriptions 等非标识符长文本仍走 P1。<strong>反派名待接</strong>：散在 <code>code/modules/antagonists</code> 各处，整目录抽会混入目标/技能等海量非偏好名，需专门源。</p>
+</li>
+<li>
+<p><strong><code>strings/</code> flavor 数据文件并入主目录（统一体系，取代旧平行副本）</strong>：抽取器 <code>extract</code> 的 flavor pass（<code>tools/i18n/src/extract.rs</code> 的 <code>FLAVOR_FILES</code>/<code>FLAVOR_DIRS</code> 白名单）把玩家可见 flavor（tips/ion_laws/junkmail/抗体/伤痕描述等）逐字抽进 <code>strings.json</code> 命名空间（保留 <code>@pick</code>/<code>@</code>/HTML token；排除口音表/人名/词频/名字生成器/关键词表）。运行时在 load 处反查落地（均 NOVA EDIT ADDITION，gated 全服 locale≠en，多词门槛，<strong>无需运行时白名单</strong>——只有目录内 flavor 会被改写）：</p>
+<ul>
+<li><code>code/__HELPERS/_string_lists.dm</code> 的 <code>load_strings_file</code>（<code>.json</code>）：照常 <code>json_load</code> 英文文件后跑 <code>lang_reverse_tree</code> 递归反查字符串叶子。</li>
+<li><code>code/__HELPERS/type2type.dm</code> 的 <code>/world/proc/file2list</code>（<code>.txt</code>）：构建行列表后逐行 <code>lang_reverse_phrase</code>（早期 GLOBAL_LIST_INIT 时 locale 仍为默认 en，跳过）。</li>
+<li>译文填进 <code>strings/i18n/&lt;locale&gt;/strings.json</code> 即生效。</li>
+</ul>
+</li>
+<li>
+<p><strong>P1b 关键 datum 家族 New() 反查</strong>（NOVA EDIT ADDITION，全服 locale≠en 时用全量 <code>lang_reverse_text</code> 反查 name/desc，覆盖聊天 <code>[名]</code> 单词类插值）：<code>code/modules/reagents/chemistry/reagents.dm</code>（<code>/datum/reagent/New</code>：name/<strong>description/taste_description</strong>）、<code>code/datums/actions/action.dm</code>（<code>/datum/action/New</code>：name/desc）、<code>code/datums/quirks/_quirk.dm</code>（<code>/datum/quirk/New</code>：name/desc）。</p>
+</li>
+<li>
+<p><strong><code>SINK_VARS</code> 白名单扩展</strong>（<code>tools/i18n/src/extract.rs</code>，纯抽取，无 DM 改动）：除 name/desc/message/title/flavor_text 外补 <code>description</code>（试剂等用此非 desc——<strong>曾完全漏抽</strong>，加入后解锁数千条试剂/datum 描述）、<code>taste_description</code>、<code>display_name</code>、<code>wiki_desc</code>、<code>war_declaration</code>、<code>explanation_text</code>、<code>cure_text</code>/<code>spread_text</code>，及 ② 类经 to_chat 的整条消息 type 变量 <code>gain_text</code>/<code>lose_text</code>/<code>playstyle_string</code>。后者多为 <code>span_*()</code> 包裹（抽内层文本），显示靠聊天 AC 子串层（<code>I18N_CHAT_FALLBACK</code>）——整串反查会因 span 包裹不命中。</p>
+</li>
+<li>
+<p><strong>P4 表情（emote）反查</strong>（NOVA EDIT ADDITION）：<code>code/datums/emotes.dm</code> 的 <code>/datum/emote/New()</code> 反查 name 与全部 message 形态变量（<code>message</code>/<code>message_mime</code>/<code>message_alien</code>/<code>message_larva</code>/<code>message_robot</code>/<code>message_AI</code>/<code>message_monkey</code>/<code>message_animal_or_basic</code>/<code>message_param</code>）。配套抽取器 <code>SINK_VARS</code> 增列这些变体（<code>tools/i18n/src/extract.rs</code>），<code>message_param</code> 译文须保留 <code>%t</code>。emote 每类型仅 New 一次，开销可忽略。</p>
+</li>
+<li>
+<p><strong>P5 数据 datum 家族反查</strong>（NOVA EDIT ADDITION，全服 locale≠en 时）：gas —— <code>code/controllers/subsystem/air.dm</code> 的 <code>SSair.Initialize()</code> 遍历 <code>GLOB.meta_gas_info</code> 反查 name/desc（gas datum 从不实例化；放 SS Init 是因为 <code>meta_gas_info</code> 是 GLOBAL_LIST_INIT，早于 <code>i18n_cache</code> 不能在 <code>meta_gas_list</code> 内反查）；disease —— <code>code/datums/diseases/_disease.dm</code> 新增 <code>/datum/disease/New()</code> 反查 name/desc；material —— <code>code/controllers/subsystem/materials.dm</code> 的 <code>initialize_material</code> 反查 name/desc。</p>
+</li>
+<li>
+<p><strong>P1 跳过 act 标识符回传列表（修 tgui_alert/list 崩溃）</strong>：<code>runtime.dm</code> 的 <code>GLOB.i18n_payload_skip_keys</code>（<code>buttons</code>/<code>items</code>/<code>init_value</code>）让 <code>lang_reverse_tree</code> <strong>跳过这些键的值</strong>。这些 list 的字符串元素会原样回传给服务端校验（tgui_alert：<code>act('choose',{choice:button})</code> 校验 <code>in buttons</code>；tgui_input_list：<code>act('choose',{entry})</code> 校验 <code>in items</code>）。若 P1 把它们译成中文，前端回传中文、服务端用英文校验 → <strong>tgui_alert CRASH「non-existent button choice」、list 静默无法选择</strong>。跳过后值保持英文（回传校验通过），显示交给 TS 端 auto-localize（<code>AlertModal.tsx</code> 的 <code>{button}</code> 文本节点过前端目录）。新增同类回传列表键在此登记即可。</p>
+</li>
+<li>
+<p><strong>P7 书本内容反查</strong>（NOVA EDIT CHANGE）：<code>code/modules/library/book.dm</code> 的 <code>/obj/item/book/Initialize</code> 构建 <code>book_data</code> 时对 <code>starting_title</code>/<code>starting_content</code> 整串 <code>lang_reverse_text</code>（author 是人名不译；不动 <code>starting_*</code> 实例变量，read-tracking 仍用英文标题作键）。配套 <code>SINK_VARS</code> 增列 <code>starting_title</code>/<code>starting_content</code>（<code>tools/i18n/src/extract.rs</code>）——食谱手册/核弹手册等 <code>/obj/item/book/manual</code> 的整篇 HTML 正文抽为单条目，译文填进 <code>strings/i18n/&lt;locale&gt;/obj.json</code> 即生效。</p>
+</li>
+<li>
+<p><strong>EXAMINE_HINT 提示词反查</strong>（NOVA EDIT CHANGE）：<code>code/__HELPERS/chat.dm</code> 的 <code>#define EXAMINE_HINT(text)</code> 改为 <code>(&quot;&lt;b&gt;&quot; + lang_reverse_text(text) + &quot;&lt;/b&gt;&quot;)</code>——examine 里的工具/构造提示词（welded/screwed/bolted/pried/wrenched/anchored/crowbar/wrench…）整串精确反查。词表手工维护在 <code>strings/i18n/&lt;locale&gt;/ui.json</code>（<code>hint_*</code> 键）。<code>lang_reverse_text</code> 整串匹配（非子串）、locale==en 原样返回；动态 <code>[var]</code> 插值的 hint 安全 no-op。配套 examine <strong>tag 词</strong>（renameable/conductive/holographic/insulated/重量级 tiny…gigantic 等）与既有 proof 标签同走 <code>ui.json</code>（<code>tag_*</code> 键），在 <code>atom_examine.dm</code> 的 examine_tags 渲染处已 <code>lang_reverse_text(atom_tag)</code>。</p>
+</li>
+<li>
+<p><strong>腿 B：AC 子串兜底层 <code>lang_fallback_apply</code> 挂接</strong>（fallback.dm，NOVA EDIT ADDITION）。字典改为从内存反查表 <code>lang_build_reverse</code> 自动构建——<strong>仅含空格的多词短语</strong>（单词排除避免子串误伤），并合并可选人工 <code>strings/i18n/&lt;locale&gt;/_fallback.json</code>。挂接点（均 gated 全服 locale≠en）：</p>
+<ul>
+<li>browse —— <code>code/datums/browser.dm</code> 的 <code>get_content()</code> 返回前过 AC（覆盖遗留 HTML 界面）；</li>
+<li>聊天 —— <code>code/modules/tgchat/to_chat.dm</code> 的 <code>to_chat</code>/<code>to_chat_immediate</code> 的 html/text，<strong>额外受 config <code>I18N_CHAT_FALLBACK</code> 开关控制（默认关）</strong>，覆盖「英文拼进变量再 to_chat」的长尾；</li>
+<li>状态栏 —— <code>code/controllers/subsystem/statpanel.dm</code> 的 <code>set_status_tab</code>：<strong>顶部 <code>global_data</code>（Map/Round ID/Time Dilation/Round Timer/Server Time…）与角色 <code>other_str</code> 均过 AC</strong>（经 <code>i18n_localize_stat_list</code> 返回本地化副本，不改共享 global_data、不动点击链接）；</li>
+<li>maptext —— <code>code/_onclick/hud/screen_objects/new_player.dm</code>（大厅信息）、<code>code/modules/escape_menu/title.dm</code>（菜单标题）过 AC（maptext 不被抽取，相关 phrases 需进 <code>_fallback.json</code> 才生效）。</li>
+<li><strong>已建 <code>strings/i18n/zh-Hans/_fallback.json</code> 起步清单</strong>：覆盖上面这些「不被抽取但已挂 AC」的静态短语（Starting in / players ready / Another day on… / Round ID / Time Dilation / Map: / Round Timer / Server Time / (Feedback) 等）。译文可按需增改；只对<strong>已挂 AC 的输出口</strong>生效，往里塞没挂 AC 的（verb 面板/纸张）无效。</li>
+</ul>
+</li>
+<li>
+<p><strong><code>lang_build_reverse</code> 早期调用加固</strong>（runtime.dm）：<code>i18n_cache</code> 尚未就绪时返回空表但<strong>不缓存</strong>，避免极早期调用把空反查表钉死、毒化后续全部反查（gas/material 等 SS Init 期调用的前置保障）。</p>
+</li>
+<li>
+<p><code>tgui/packages/tgui/events/types.ts</code>: <code>Config</code> 类型新增 <code>locale: string</code>（NOVA EDIT ADDITION）。</p>
+</li>
+<li>
+<p><code>tgui/rspack.config.ts</code>: <code>packages/tgui</code> 使用 <code>tgui/i18n</code> JSX runtime，自动本地化静态 JSX 文本；
+<code>tgui-panel</code> / <code>tgui-say</code> 保持 React 原生 runtime。</p>
+</li>
+<li>
+<p><code>tools/i18n/tgui-catalog.mjs</code>: 抽取 TGUI 静态文本到 <code>strings/i18n/en/tgui.json</code>，复用中文目录/术语，
+并同步 <code>tgui/packages/tgui/i18n/*.json</code>（构建脚本会自动执行 sync）。</p>
+</li>
+<li>
+<p>大量 <code>code/**/*.dm</code>：由 <code>tools/i18n</code> 幂等改写工具批量将字符串字面量替换为 <code>LANG/LANGU</code>
+（分阶段进行，每个被改写文件顶部带统一标记注释）。</p>
+</li>
+</ul>
+<h3 id="defines">Defines:</h3>
+<ul>
+<li><code>code/__DEFINES/~nova_defines/i18n.dm</code>: <code>LANGUAGE_LOCALE_EN</code>、<code>LANGUAGE_LOCALE_ZH_HANS</code>、
+<code>DEFAULT_UI_LOCALE</code>、<code>I18N_SUBDIRECTORY</code>、<code>LANG(key, args)</code>、<code>LANGU(user, key, args)</code>。</li>
+</ul>
+<h3 id="included-files-that-are-not-contained-in-this-module">Included files that are not contained in this module:</h3>
+<ul>
+<li><code>strings/i18n/&lt;locale&gt;/*.json</code> —— 翻译目录（由 Rust/TGUI 工具生成 / 在线平台导入导出）。</li>
+<li><code>tools/i18n/</code> —— Rust 抽取/改写工具与机翻流水线。</li>
+<li><code>tgui/packages/tgui/i18n/*.json</code> —— 前端打包目录，由 <code>strings/i18n/&lt;locale&gt;/tgui.json</code> 同步生成运行时子集；
+英文原文作 key，缺失时回退英文，未译静态英文不会打进 bundle。</li>
+<li><code>tgui/packages/tgui/i18n/jsx-runtime.ts</code> —— TGUI JSX 自动本地化入口。</li>
+</ul>
+<h3 id="运行服务器-已知问题">运行服务器 / 已知问题:</h3>
+<ul>
+<li><strong>完整命令手册</strong>：见 <code>tools/i18n/README.md</code> 的「命令速查」。常用入口：
+<ul>
+<li>进入环境：<code>nix develop</code></li>
+<li>游戏/TGUI 重同步：<code>bash tools/i18n/resync.sh</code></li>
+<li>翻译游戏命名空间：<code>bun tools/i18n/mt/i18n-mt.ts obj.json</code></li>
+<li>修复术语不一致：<code>bun tools/i18n/mt/i18n-mt.ts translate-terms obj.json</code></li>
+<li>翻译 TGUI：<code>bun tools/i18n/mt/i18n-mt.ts tgui.json</code></li>
+<li>人工校对：把 <code>strings/i18n/&lt;locale&gt;/*.json</code> 导入你选的在线平台，校对后导回；TGUI 改完后 <code>node tools/i18n/tgui-catalog.mjs sync</code></li>
+<li>构建并启动：<code>tools/build/build.sh &amp;&amp; DreamDaemon tgstation.dmb 1337 -trusted</code></li>
+</ul>
+</li>
+<li><strong>切全服中文</strong>：配置项 <code>I18N_SERVER_LOCALE zh-Hans</code>（<code>config/</code>）。游戏文本、name/desc 反查、
+以及 <code>packages/tgui</code> 中已进入前端目录的静态文本都跟随这个全服 locale。</li>
+<li><strong>聊天层 AC 兜底（可选）</strong>：
+<ul>
+<li><strong>AC = Aho-Corasick 子串替换层</strong>（<code>fallback.dm</code> 的 <code>lang_fallback_apply</code>，基于 rust_g 的
+<code>rustg_acreplace</code>）。在文本输出口把一段文本里出现的英文短语一次性按字典换成中文。用于「不是
+<code>LANG()</code> 调用、整串反查也搞不定」的残留英文——主要是<strong>英文先拼进变量再 <code>to_chat</code></strong>、browse 老网页文案。</li>
+<li><strong>字典从哪来（重要）</strong>：<strong>不是独立文件</strong>。运行时由 <code>lang_build_reverse</code> 从已加载的
+<code>strings/i18n/&lt;locale&gt;/*.json</code>（即你正常翻译的那套目录）现算——<strong>只取含空格的多词短语</strong>（单词排除，
+避免子串误伤）。所以<strong>你翻 <code>strings/i18n/zh-Hans/*.json</code>，AC 字典就自动更新</strong>，无需维护额外文件。
+可选人工补充 <code>strings/i18n/&lt;locale&gt;/_fallback.json</code>（扁平 <code>{&quot;english&quot;:&quot;中文&quot;}</code>，默认不存在）。</li>
+<li><strong>怎么开</strong>：<code>config/game_options.txt</code> 写 <code>I18N_CHAT_FALLBACK 1</code>（flag，默认关；裸写名字或 <code>1</code>=开，
+<code>0</code>=关），重启 <code>DreamDaemon</code>（配置启动时读，<strong>无需重新编译</strong>）。</li>
+<li><strong>范围</strong>：此开关<strong>只管聊天</strong>（<code>to_chat</code>/<code>to_chat_immediate</code>）。browse / 状态栏 / 大厅 maptext 的 AC
+兜底「locale≠en 就一直开」，不受此开关控制（本就低频）。</li>
+<li><strong>代价</strong>：聊天是热路径，每行多一次 AC 扫描 + 多词短语偶尔误翻动态数据 → 默认关，翻好后开启实测。</li>
+</ul>
+</li>
+<li><strong>NixOS 上启动</strong>：<code>nix develop</code> 后 <code>tools/build/build.sh</code> 编译，<code>DreamDaemon tgstation.dmb &lt;port&gt; -trusted</code>
+运行。<code>librust_g.so</code> 由 devShell 自动软链（缺它日志子系统会卡死，见 <code>nix/rust_g.nix</code>）。</li>
+<li><strong>32 位 rust_g iconforge OOM 崩溃（重要）</strong>：BYOND/rust_g 在 Linux 是 <strong>32 位</strong>进程（地址空间
+~3GB）。客户端进大厅时服务端用 rust_g 的 iconforge（rayon 全核并行）生成精灵图集，峰值内存会
+撑爆 32 位地址空间 → Rust OOM <code>abort</code>（核心转储，表现为<strong>客户端停在大厅按钮界面、服务端不再
+刷日志</strong>）。<strong>与 i18n 无关</strong>。修复：限制 rayon 线程数压低峰值——<code>nix/byond.nix</code> 的 DreamDaemon
+包装器已默认 <code>RAYON_NUM_THREADS=2</code>（实测稳定，可用 <code>RAYON_NUM_THREADS=N DreamDaemon …</code> 覆盖）。</li>
+</ul>
+<h3 id="credits">Credits:</h3>
+<ul>
+<li>NovaSector i18n 基础设施。DM 解析复用 SpaceManiac/SpacemanDMM 的 <code>dreammaker</code> crate (GPL-3.0)。</li>
+</ul></td></tr></table></main><footer>tgstation.dme <a href="https://github.com/sernseek/NovaSector/tree/e244656713d063185c8a02d33e48c72579ae163d">e244656</a> (master) — <a href="https://github.com/SpaceManiac/SpacemanDMM/blob/master/crates/dmdoc/README.md">dmdoc 1.11.0</a></footer></body></html>

@@ -1,0 +1,52 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><base href="../../../../"><link rel="stylesheet" href="dmdoc.css"><title>modular_nova/modules/i18n/code/runtime.dm - /tg/ Station 13</title></head><body><header><a href="index.html">/tg/ Station 13</a> - <a href="index.html#modules">Modules</a> - <a href="index.html#types">Types</a></header><main><h1>modular_nova/modules/i18n/code/runtime.dm <a href="https://github.com/sernseek/NovaSector/blob/e244656713d063185c8a02d33e48c72579ae163d/modular_nova/modules/i18n/code/runtime.dm"><img src="git.png" width="16" height="16" title="modular_nova/modules/i18n/code/runtime.dm"></a></h1><table class="summary" cellspacing="0"><tr><th>/proc/<a href="global.html#proc/build_i18n_cache">build_i18n_cache</a></th><td>扫描 strings/i18n/ 下各 locale 目录，加载全部 .json。仅启动时调用（GLOBAL_LIST_INIT）。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_template">lang_template</a></th><td>纯读：取某 locale 下某 key 的模板；缺失返回 null。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_interpolate">lang_interpolate</a></th><td>把模板里的 {0}/{1}… 用 args 依次替换（args 为 /list，元素按位置对应）。
+文本实参经 lang_localize_arg 本地化链（仅全服 locale≠en；en 零额外开销）。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_localize_arg">lang_localize_arg</a></th><td>LANG 实参/引擎捕获的统一本地化链：状态词 → 代词/系动词 → 整串反查 → 冠词剥离反查。
+解决「模板译了、运行期填进来的实参却是英文」的四类：
+① 开关/状态词（open/closed/lit…，<code>_state_words.json</code> 精确表）；
+② 代词与系动词（p_They()/p_are() 的 They/are → 他们/是，lang_pronoun 专用小表）；
+③ 目录里有的整串（安全等级 &quot;green&quot;→绿色、&quot;None&quot;→无——按值精确反查）；
+④ 带英文冠词的名字（&quot;\the [src]&quot;/&quot;\a [x]&quot; 渲染出的 &quot;The wall&quot;/&quot;a Monkey&quot;——剥冠词反查
+余下部分（再试小写），命中则丢冠词：中文无冠词）。
+全部是精确匹配，查不到原样保留（玩家名/数字/已中文串零误伤）。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_strip_article">lang_strip_article</a></th><td>若文本以英文冠词开头（the/a/an，含大写），返回去冠词后的余部；否则 null。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_process_text_escapes">lang_process_text_escapes</a></th><td>处理从 JSON 模板带出的 BYOND 转义/文法宏（rewrite 把编译期字面量改成 LANG 后，这些转义不再被引擎
+处理）：① 剥文法宏；② 还原转义引号 &quot; → &quot;；③ 还原 \n → 换行、\t → 制表符。
+源码里 <code>&quot;\n&quot;</code> 是 DM 编译期换行转义；抽取器把它当<strong>字面 2 字符</strong> <code>\n</code> 存进 JSON（<code>&quot;\\n&quot;</code>），LANG 从
+JSON 取回后引擎不再解释 → 会字面显示 <code>\n</code>（如警棍 examine「\n它当前为…」）。在此还原。仅在串含反斜杠时调用。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_resolve">lang_resolve</a></th><td>核心（纯函数）：按 locale 查模板（缺则回退英文，再缺则返回 key），最后做占位符替换。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_format">lang_format</a></th><td>全服 locale 版本（广播类文本用）。见 LANG 宏。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_format_for">lang_format_for</a></th><td>兼容旧调用的单接收者入口；当前部署模式强制使用全服 locale。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_strip_grammar_macros">lang_strip_grammar_macros</a></th><td>剥掉 BYOND 文法宏 \improper/\proper，得到「显示形态」串。
+两种来源都要剥：① 运行时 name/desc 里是<strong>编译期标记字节</strong>（DM 源写 &quot;\improper&quot; 即该字节，
+故 replacetext 用 &quot;\improper&quot; 能匹配）；② 目录 JSON 里存的是<strong>字面</strong> &quot;\improper&quot;（反斜杠+improper，
+用 &quot;\improper&quot; 匹配）。规整到无宏并 trim，使两端对齐（否则带 \improper 的名永远查不中）。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_build_reverse">lang_build_reverse</a></th><td>惰性构建某 locale 的反查表（从已加载的 GLOB.i18n_cache 读取）。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_collapse_ws">lang_collapse_ws</a></th><td>把一段英文整串反查为全服 locale 的译文；查不到/缺省 locale 时原样返回。
+把连续空格/制表符折叠成单空格，对齐抽取器对 DM &quot;&quot; 续行的归一：源码里
+<code>&quot;… foo \</code>&lt;换行&gt;&lt;制表符&gt;<code>bar …&quot;</code> 在 DM 运行时会把续行的前导制表符并入字符串
+（变成 &quot;foo \t\tbar&quot;），而抽取器把它归一成单空格（&quot;foo bar&quot;）→ 整串反查不命中。
+只折叠空格/制表符，保留换行（有意的多段 \n 不动）。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_localize_display_name">lang_localize_display_name</a></th><td>显示用「物件名」本地化：先整串精确反查（命中堆叠/单词名/已译名幂等），miss 再走 AC 子串兜
+复合名（如 &quot;Robotics Lab APC&quot; → 区域名子串 &quot;Robotics Lab&quot; 被换）。与 screentip（_atom.dm）同款
+两步，抽成共用 proc 供「绕过 examine/AC 路径、只发 atom.name 的 UI」复用（如 LootPanel）。
+仅用于<strong>纯显示</strong>的名字（act/回传用 ref/path、不用 name 处），翻名不破标识符。locale==en no-op。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_reverse_suffixed">lang_reverse_suffixed</a></th><td>反查「base + 已知追加后缀」型字符串：先整串精确（rnd_desc 等无后缀的直接命中）；miss 时若以某
+已知后缀结尾，拆成 base + 后缀各自精确反查再拼回（均为目录键 → 干净、不经 AC）。locale==en no-op。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_localize_chat_sentence">lang_localize_chat_sentence</a></th><td>完整句聊天行反查：用于「先 <code>list += span_*(&quot;整句&quot;)</code> 累加、再 jointext 进一个 boxed_message
+经 to_chat 输出」的场景（如职业出生提示 get_spawn_message）。整盒在 to_chat 只走 AC 子串，而
+rustg AC 是<strong>最短匹配</strong>：当完整句与其子短语都在目录时，长句会被拆成「已译子短语 + 中间留英文」
+（典型：skeleton crew 那句）。在落地前对<strong>每条完整行</strong>整串反查目录译文，AC 便不再蚕食。
+处理 <code>&lt;span class='x'&gt;整句&lt;/span&gt;</code> 包裹：剥壳反查内层再回包。插值行整串 miss、原样返回，
+留待 to_chat 的模板逆匹配引擎（lang_template_apply）处理。locale==en 时直接返回（零开销）。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_reverse_phrase">lang_reverse_phrase</a></th><td>「多词」门槛的反查：仅含空白（多词/短语）的串才查表，避免把 On/None/枚举值/ckey 这类
+单词误翻（动态数据常正好等于某常见词）。短语类（datum 的 desc、多词 name）才反查。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_reverse_phrase_tgui">lang_reverse_phrase_tgui</a></th><td>TGUI 负载专用反查：若该串属于 TGUI 前端目录（TS 端会翻显示），P1 跳过不动数据（保住标识符）；
+否则走多词反查（datum 描述等不在前端目录的长文本）。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_reverse_tree">lang_reverse_tree</a></th><td>递归把一个 list（含嵌套 list / 关联 list）里的字符串「值」按多词门槛反查为全服 locale 译文。
+用于 TGUI 的 ui_data/ui_static_data 负载：把非 atom datum 的 name/desc/说明等动态内容本地化。
+key 不动（程序用的标识）；就地改写并返回。幂等（已译的中文不会再匹配英文 key）。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_localize_job_description">lang_localize_job_description</a></th><td>职业描述本地化（偏好菜单职业 tab 的 tooltip）。antag_opt_in 模块把「opt-in 后缀句」拼到
+description 末尾（<code>description = initial(description) + suffix</code>，见 antag_opt_in/code/job.dm），
+于是运行期整串 = 基础句 + 后缀，<strong>整串非目录键</strong> → lang_reverse_pref_descriptions 的整串精确
+反查必然 miss，AC 子串对长基础句也不稳。这里用 initial() 取回<strong>基础句</strong>单独精确反查（基础句是
+目录键，折叠续行制表符后命中），后缀短语各自在目录里 → 走 AC；拼回。无后缀的职业直接整串反查。
+全服 locale==en 时原样返回（零行为变化）。供 middleware/jobs.dm 调用。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_display_time_text">lang_display_time_text</a></th><td>中文时长格式（无英文复数 / 无 &quot; and &quot; 连接词）。core 的 DisplayTimeText 在全服中文时改调此处。
+当前为 zh-Hans 用词（天/小时/分钟/秒）——这是唯一非英文 locale；未来加 locale 时在此分支即可。
+与 core DisplayTimeText 的分段逻辑一一对应，只换用词与拼接（中文直接连写）。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_zone">lang_zone</a></th><td>身体部位名的<strong>专用</strong>反查（避开「chest=胸部 vs 储物箱」这类单词全局碰撞——只在部位语境调用）。
+当前 zh-Hans 用词；core 的 parse_zone（部位 define→显示名）与 plaintext_zone（部位文本）显示处调用。
+locale==en 或非部位串 → 原样返回。键含多词部位（与全局目录值一致，无冲突）+ 单词部位（全局不收）。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_material">lang_material</a></th><td>材料名的<strong>专用</strong>反查（gold/glass/iron… → 中文）。不走全局反查——单词类材料名与日常词碰撞
+（gold=黄金/金色、glass=玻璃/杯，MT 全局已按错义译），专用映射只在「确知是材料」的显示处调用
+（examine 的「由…制成」），零碰撞、按材料义翻。未来加 locale 时在此分支扩展。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_pronoun">lang_pronoun</a></th><td>代词的<strong>专用</strong>反查（he/she/it/is/his/him… → 中文）。不走全局反查——it/is/his 等是极常见短词，
+全局整串反查会误伤正好等于这些词的动态数据；专用映射只在代词 proc / 模板代词实参处调用，零碰撞。
+只覆盖可干净映射的代词与系动词（is/are→是、has/have→有）；语法后缀（does/do/s/es）保持英文。
+大小写无关（中文无大小写）：按小写查，命中返回中文、否则原样（含 capitalize 后的英文回退）。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_reverse_text_or_list">lang_reverse_text_or_list</a></th><td>物种「描述」可能是字符串（多数物种 <code>return placeholder_description</code> / 单段裸串）或字符串列表
+（shadekin 等多段 <code>return list(&quot;段1&quot;,&quot;段2&quot;)</code>）——按类型分派反查。get_species_description 两种返回
+都有，单用 lang_reverse_text 会漏掉 list 形态（且对 list 反查无意义）。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_reverse_string_list">lang_reverse_string_list</a></th><td>反查一个字符串列表的每个元素（用于物种 lore：list(&quot;段1&quot;, &quot;段2&quot;, …) 逐段整串反查）。
+全服中文时就地改写并返回；locale==en 原样返回。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_reverse_perks">lang_reverse_perks</a></th><td>反查物种特征(perk)结构里的 name/description（结构：assoc[perk_type] = list of perk(assoc)）。
+静态 perk 串命中目录即译；perk 描述经 rewrite 已 LANG 化（模板可译），但插值实参里的<strong>物种名</strong>
+（[name]/[plural_form]）运行时填的是英文 → 此处按物种名整词替换为中文译名（物种名在目录已译）。
+传入 species 以取其 name/plural_form。就地改写并返回。</td></tr><tr><th>/proc/<a href="global.html#proc/lang_localize_perk_text">lang_localize_perk_text</a></th><td>单条 perk 文本本地化：先整串反查（兼容未 LANG 化的静态 perk），再按预编译正则替换物种名。</td></tr></table></main><footer>tgstation.dme <a href="https://github.com/sernseek/NovaSector/tree/e244656713d063185c8a02d33e48c72579ae163d">e244656</a> (master) — <a href="https://github.com/SpaceManiac/SpacemanDMM/blob/master/crates/dmdoc/README.md">dmdoc 1.11.0</a></footer></body></html>
